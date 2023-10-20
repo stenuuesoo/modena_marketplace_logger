@@ -39,6 +39,24 @@ class Modena_Product_Log {
                 // Get WooCommerce product object
                 $wc_product = wc_get_product($product_id);
 
+                $date_on_sale_to = $wc_product->get_date_on_sale_to();
+                $sale_end_date = $date_on_sale_to ? $date_on_sale_to->date('Y-m-d') : null;
+
+                // Get dimensions
+                $dimensions = $wc_product->get_dimensions();
+
+                // Get weight
+                $weight = $wc_product->get_weight();
+
+                // Get regular price
+                $regular_price = $wc_product->get_regular_price();
+
+                // Get sale price
+                $sale_price = $wc_product->get_sale_price();
+
+                // Get current price
+                $current_price = $wc_product->get_price();
+
                 // Get product description
                 $description = $wc_product->get_description();
 
@@ -57,12 +75,16 @@ class Modena_Product_Log {
                     'description' => $description,
                     'quantity_available' => $quantity_available,
                     'image_url' => $thumbnail_url ? $thumbnail_url[0] : '',
-                    // Add more attributes here
+                    'dimensions' => $dimensions,
+                    'weight' => $weight,
+                    'regular_price' => $regular_price,
+                    'sale_price' => $sale_price,
+                    'current_price' => $current_price,
+                    'sale_end_date' => $sale_end_date,  // Add sale end date here
                 ];
             }
         }
 
         return new WP_REST_Response($products, 200);
     }
-
 }
