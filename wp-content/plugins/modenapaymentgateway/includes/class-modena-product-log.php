@@ -19,6 +19,11 @@ class Modena_Product_Log {
             'methods' => 'GET',
             'callback' => [$this, 'fetch_products'],
         ]);
+        // New route for creating orders
+        register_rest_route('modena-logger_api/v1', '/create_order/', [
+            'methods' => 'POST',
+            'callback' => [$this, 'create_order'],
+        ]);
     }
 
     public function fetch_products() {
@@ -86,5 +91,44 @@ class Modena_Product_Log {
         }
 
         return new WP_REST_Response($products, 200);
+    }
+
+    public function create_order(WP_REST_Request $request) {
+        $params = $request->get_json_params();
+
+        // Validate and sanitize the request parameters
+        // ...
+
+        $address = array(
+            'first_name' => $params['first_name'],
+            'last_name'  => $params['last_name'],
+            'company'    => '',
+            'email'      => $params['email'],
+            'phone'      => $params['phone'],
+            'address_1'  => $params['address_1'],
+            'address_2'  => '',
+            'city'       => $params['city'],
+            'state'      => $params['state'],
+            'postcode'   => $params['postcode'],
+            'country'    => $params['country']
+        );
+
+        $order = wc_create_order();
+
+        // Add products to the order
+        foreach ($params['products'] as $product) {
+            $order->add_product(wc_get_product($product['id']), $product['quantity']);
+        }
+
+        $order->set_address($address, 'billing');
+        $order->set_address($address, 'shipping');
+
+        $order->calculate_totals();
+
+        if ($order->save()) {
+            return new WP_REST_Response(['status' => 'success', 'order_id' => $order->get_id()], 200);
+        } else {
+            return new WP_REST_Response(['status' => 'error', 'message' => 'Order could not be created'], 500);
+        }
     }
 }
