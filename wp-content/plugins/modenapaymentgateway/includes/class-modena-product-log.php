@@ -5,28 +5,52 @@ if (!defined('ABSPATH')) {
 }
 
 class Modena_Product_Log {
+
+    private const UNIQUE_ACCESS_KEY    = '123e4567-e89b-12d3-a456-426655440000';
+
     public function __construct() {
-        $this->initialize_product_log();
+        add_filter('rest_pre_serve_request', [$this, 'allow_my_custom_header']);
         add_action('rest_api_init', [$this, 'register_api_routes']);
     }
 
-    public function initialize_product_log() {
-        error_log("yes");
+    public function allow_my_custom_header($value) {
+        // Check if the request URL matches your custom route
+        $request_uri = $_SERVER['REQUEST_URI'] ?? '';
+        if (strpos($request_uri, '/wp-json/modena-logger_api/') !== false) {
+            header("Access-Control-Allow-Origin: *");
+            header("Access-Control-Allow-Headers: X_UNIQUE_ACCESS_KEY, Origin, X-Requested-With, Content-Type, Accept");
+        }
+        return $value;
     }
 
     public function register_api_routes() {
         register_rest_route('modena-logger_api/v1', '/products/', [
             'methods' => 'GET',
             'callback' => [$this, 'fetch_products'],
+            'permission_callback' => [$this, 'check_custom_header']  // Add this line
         ]);
-        // New route for creating orders
         register_rest_route('modena-logger_api/v1', '/create_order/', [
             'methods' => 'POST',
             'callback' => [$this, 'create_order'],
+            'permission_callback' => [$this, 'check_custom_header']  // Add this line
         ]);
     }
 
-    public function fetch_products() {
+    public function check_custom_header($request) {
+        $headers = $request->get_headers();
+        $provided_access_key = isset($headers['X_UNIQUE_ACCESS_KEY']) ? $headers['X_UNIQUE_ACCESS_KEY'][0] : null;
+
+        // Check the header
+        if ($provided_access_key === self::UNIQUE_ACCESS_KEY) {
+            return true;
+        } else {
+            return new WP_Error('rest_forbidden', 'You are not allowed to do that.', array('status' => 403));
+        }
+    }
+
+    public function fetch_products(WP_REST_Request $request) {
+
+
         $args = [
             'post_type' => 'product',
             'posts_per_page' => 10,
@@ -41,38 +65,20 @@ class Modena_Product_Log {
                 $query->the_post();
                 $product_id = get_the_ID();
 
-                // Get WooCommerce product object
                 $wc_product = wc_get_product($product_id);
 
                 $date_on_sale_to = $wc_product->get_date_on_sale_to();
                 $sale_end_date = $date_on_sale_to ? $date_on_sale_to->date('Y-m-d') : null;
-
-                // Get dimensions
                 $dimensions = $wc_product->get_dimensions();
-
-                // Get weight
                 $weight = $wc_product->get_weight();
-
-                // Get regular price
                 $regular_price = $wc_product->get_regular_price();
-
-                // Get sale price
                 $sale_price = $wc_product->get_sale_price();
-
-                // Get current price
                 $current_price = $wc_product->get_price();
-
-                // Get product description
                 $description = $wc_product->get_description();
-
-                // Get available quantity (stock)
                 $quantity_available = $wc_product->get_stock_quantity();
-
-                // Get product image URL
                 $thumbnail_id = get_post_thumbnail_id($product_id);
                 $thumbnail_url = wp_get_attachment_image_src($thumbnail_id, 'thumbnail-size', true);
 
-                // Create the product data array
                 $products[] = [
                     'id' => $product_id,
                     'title' => get_the_title(),
@@ -94,10 +100,9 @@ class Modena_Product_Log {
     }
 
     public function create_order(WP_REST_Request $request) {
-        $params = $request->get_json_params();
 
-        // Validate and sanitize the request parameters
-        // ...
+
+        $params = $request->get_json_params();
 
         $address = array(
             'first_name' => $params['first_name'],
@@ -115,7 +120,6 @@ class Modena_Product_Log {
 
         $order = wc_create_order();
 
-        // Add products to the order
         foreach ($params['products'] as $product) {
             $order->add_product(wc_get_product($product['id']), $product['quantity']);
         }
