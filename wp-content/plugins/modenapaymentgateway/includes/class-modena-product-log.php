@@ -62,8 +62,25 @@ class Modena_Product_Log {
                 // Get current price
                 $current_price = $wc_product->get_price();
 
+                $shipping_methods = $this->get_estonia_shipping_methods();
+                foreach ($products as &$product) {
+                    $product['shipping_methods'] = $shipping_methods;
+                }
                 // Get product description
                 $description = $wc_product->get_description();
+                $product_category_ids = $wc_product->get_category_ids();
+
+                $categories = array();
+                foreach ($product_category_ids as $category_id) {
+                    $term = get_term_by('id', $category_id, 'product_cat');
+                    $categories[] = array(
+                        'id' => $term->term_id,
+                        'name' => $term->name,
+                        'slug' => $term->slug,
+                        'description' => $term->description,
+                        'count' => $term->count
+                    );
+                }
 
                 // Get available quantity (stock)
                 $quantity_available = $wc_product->get_stock_quantity();
@@ -78,6 +95,7 @@ class Modena_Product_Log {
                     'title' => get_the_title(),
                     'content' => get_the_content(),
                     'description' => $description,
+                    'categories' => $categories,
                     'quantity_available' => $quantity_available,
                     'image_url' => $thumbnail_url ? $thumbnail_url[0] : '',
                     'dimensions' => $dimensions,
@@ -86,11 +104,42 @@ class Modena_Product_Log {
                     'sale_price' => $sale_price,
                     'current_price' => $current_price,
                     'sale_end_date' => $sale_end_date,  // Add sale end date here
+                    'shipping_methods' => $shipping_methods,
                 ];
             }
         }
 
         return new WP_REST_Response($products, 200);
+    }
+    private function get_estonia_shipping_methods() {
+        $all_zones = WC_Shipping_Zones::get_zones();
+        $estonia_zone_id = null;
+
+        // Search for Estonia in shipping zones
+        foreach ($all_zones as $zone_id => $zone) {
+            foreach ($zone['zone_locations'] as $location) {
+                if ($location->type === 'country' && $location->code === 'EE') {
+                    $estonia_zone_id = $zone_id;
+                    break;
+                }
+            }
+            if ($estonia_zone_id) {
+                break;
+            }
+        }
+
+        $shipping_methods = [];
+        if ($estonia_zone_id !== null) {
+            $zone = new WC_Shipping_Zone($estonia_zone_id);
+            foreach ($zone->get_shipping_methods() as $method) {
+                $shipping_methods[] = array(
+                    'title' => $method->get_title(),  // get_title() is a common method
+                    'cost' => $method->get_instance_option('cost', 'N/A') // Getting the cost, if available
+                );
+            }
+        }
+
+        return $shipping_methods;
     }
 
     public function create_order(WP_REST_Request $request) {
