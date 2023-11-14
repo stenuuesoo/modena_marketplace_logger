@@ -19,11 +19,53 @@ class Modena_Product_Log {
             'methods' => 'GET',
             'callback' => [$this, 'fetch_products'],
         ]);
+        register_rest_route('modena-logger_api/v1', '/shipping_methods/', [
+            'methods' => 'GET',
+            'callback' => [$this, 'get_webshop_shipping_methods'],
+        ]);
+
         // New route for creating orders
         register_rest_route('modena-logger_api/v1', '/create_order/', [
             'methods' => 'POST',
             'callback' => [$this, 'create_order'],
         ]);
+    }
+
+    public function get_webshop_shipping_methods() {
+
+        $shipping_methods = $this->get_estonia_shipping_methods();
+        return new WP_REST_Response($shipping_methods, 200);
+    }
+
+    private function get_estonia_shipping_methods() {
+        $all_zones = WC_Shipping_Zones::get_zones();
+        $estonia_zone_id = null;
+
+        // Search for Estonia in shipping zones
+        foreach ($all_zones as $zone_id => $zone) {
+            foreach ($zone['zone_locations'] as $location) {
+                if ($location->type === 'country' && $location->code === 'EE') {
+                    $estonia_zone_id = $zone_id;
+                    break;
+                }
+            }
+            if ($estonia_zone_id) {
+                break;
+            }
+        }
+
+        $shipping_methods = [];
+        if ($estonia_zone_id !== null) {
+            $zone = new WC_Shipping_Zone($estonia_zone_id);
+            foreach ($zone->get_shipping_methods() as $method) {
+                $shipping_methods[] = array(
+                    'title' => $method->get_title(),  // get_title() is a common method
+                    'cost' => $method->get_instance_option('cost', 'N/A') // Getting the cost, if available
+                );
+            }
+        }
+
+        return $shipping_methods;
     }
 
     public function fetch_products() {
@@ -62,10 +104,7 @@ class Modena_Product_Log {
                 // Get current price
                 $current_price = $wc_product->get_price();
 
-                $shipping_methods = $this->get_estonia_shipping_methods();
-                foreach ($products as &$product) {
-                    $product['shipping_methods'] = $shipping_methods;
-                }
+
                 // Get product description
                 $description = $wc_product->get_description();
                 $product_category_ids = $wc_product->get_category_ids();
@@ -104,43 +143,13 @@ class Modena_Product_Log {
                     'sale_price' => $sale_price,
                     'current_price' => $current_price,
                     'sale_end_date' => $sale_end_date,  // Add sale end date here
-                    'shipping_methods' => $shipping_methods,
                 ];
             }
         }
 
         return new WP_REST_Response($products, 200);
     }
-    private function get_estonia_shipping_methods() {
-        $all_zones = WC_Shipping_Zones::get_zones();
-        $estonia_zone_id = null;
 
-        // Search for Estonia in shipping zones
-        foreach ($all_zones as $zone_id => $zone) {
-            foreach ($zone['zone_locations'] as $location) {
-                if ($location->type === 'country' && $location->code === 'EE') {
-                    $estonia_zone_id = $zone_id;
-                    break;
-                }
-            }
-            if ($estonia_zone_id) {
-                break;
-            }
-        }
-
-        $shipping_methods = [];
-        if ($estonia_zone_id !== null) {
-            $zone = new WC_Shipping_Zone($estonia_zone_id);
-            foreach ($zone->get_shipping_methods() as $method) {
-                $shipping_methods[] = array(
-                    'title' => $method->get_title(),  // get_title() is a common method
-                    'cost' => $method->get_instance_option('cost', 'N/A') // Getting the cost, if available
-                );
-            }
-        }
-
-        return $shipping_methods;
-    }
 
     public function create_order(WP_REST_Request $request) {
         $params = $request->get_json_params();
