@@ -6,12 +6,7 @@ if (!defined('ABSPATH')) {
 
 class Modena_Product_Log {
     public function __construct() {
-        $this->initialize_product_log();
         add_action('rest_api_init', [$this, 'register_api_routes']);
-    }
-
-    public function initialize_product_log() {
-        error_log("yes");
     }
 
     public function register_api_routes() {
@@ -21,7 +16,7 @@ class Modena_Product_Log {
         ]);
         register_rest_route('modena-logger_api/v1', '/shipping_methods/', [
             'methods' => 'GET',
-            'callback' => [$this, 'get_webshop_shipping_methods'],
+            'callback' => [$this, 'fetch_shipping_methods'],
         ]);
 
         // New route for creating orders
@@ -31,13 +26,13 @@ class Modena_Product_Log {
         ]);
     }
 
-    public function get_webshop_shipping_methods() {
+    public function fetch_shipping_methods() {
 
-        $shipping_methods = $this->get_estonia_shipping_methods();
+        $shipping_methods = $this->get_estonia_locale_shipping_methods();
         return new WP_REST_Response($shipping_methods, 200);
     }
 
-    private function get_estonia_shipping_methods() {
+    private function get_estonia_locale_shipping_methods() {
         $all_zones = WC_Shipping_Zones::get_zones();
         $estonia_zone_id = null;
 
@@ -154,32 +149,44 @@ class Modena_Product_Log {
     public function create_order(WP_REST_Request $request) {
         $params = $request->get_json_params();
 
-        // Validate and sanitize the request parameters
-        // ...
-
-        $address = array(
+        $billing_address = array(
             'first_name' => $params['first_name'],
             'last_name'  => $params['last_name'],
-            'company'    => '',
             'email'      => $params['email'],
+            'company'    => $params['company'],
             'phone'      => $params['phone'],
             'address_1'  => $params['address_1'],
-            'address_2'  => '',
+            'address_2'  => $params['address_2'] ?? '',  // Optional field
             'city'       => $params['city'],
             'state'      => $params['state'],
             'postcode'   => $params['postcode'],
             'country'    => $params['country']
         );
 
+        $shipping_address = isset($params['shipping_address']) ? $params['shipping_address'] : $billing_address;
+
         $order = wc_create_order();
 
-        // Add products to the order
         foreach ($params['products'] as $product) {
             $order->add_product(wc_get_product($product['id']), $product['quantity']);
         }
 
-        $order->set_address($address, 'billing');
-        $order->set_address($address, 'shipping');
+        // Set addresses
+        $order->set_address($billing_address, 'billing');
+        $order->set_address($shipping_address, 'shipping');
+
+        // Select shipping method
+        if (isset($params['shipping_method'])) {
+            $shipping_method_id = $params['shipping_method'];
+            $shipping_method = new WC_Shipping_Rate($shipping_method_id);
+            $item = new WC_Order_Item_Shipping();
+            $item->set_props(array(
+                'method_title' => $shipping_method->label,
+                'method_id'    => $shipping_method->id,
+                'total'        => $shipping_method->cost
+            ));
+            $order->add_item($item);
+        }
 
         $order->calculate_totals();
 
@@ -190,3 +197,27 @@ class Modena_Product_Log {
         }
     }
 }
+
+/*
+ *  EXAMPLE POST REQUEST
+ * {
+    "first_name": "John",
+    "last_name": "Doe",
+    "email": "john.doe@example.com",
+    "company": "Doe Enterprises",
+    "phone": "1234567890",
+    "address_1": "123 Main St",
+    "address_2": "Apt 4",
+    "city": "Anytown",
+    "state": "Anystate",
+    "postcode": "12345",
+    "country": "EE", // Assuming Estonia based on your shipping method
+    "products": [
+        {
+            "id": 14,
+            "quantity": 1
+        }
+    ],
+    "shipping_method": "local_pickup" // Use the ID or a unique identifier of your shipping method
+}
+ */
